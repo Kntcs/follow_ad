@@ -63,6 +63,35 @@ import re
 
 def md_to_html(text):
     """将 Markdown 转换为 HTML"""
+    # 转换表格
+    table_pattern = r'\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)'
+
+    def convert_table(match):
+        header = match.group(1)
+        rows = match.group(2)
+
+        # 处理表头
+        headers = [h.strip() for h in header.split('|') if h.strip()]
+        html = '<table style="width:100%; border-collapse: collapse; margin: 12px 0;">'
+        html += '<thead><tr>'
+        for h in headers:
+            html += f'<th style="border: 1px solid #ddd; padding: 8px; background: #f0f7ff; text-align: left;">{h}</th>'
+        html += '</tr></thead><tbody>'
+
+        # 处理数据行
+        for row in rows.strip().split('\n'):
+            if row.strip():
+                cells = [c.strip() for c in row.split('|') if c.strip()]
+                html += '<tr>'
+                for cell in cells:
+                    html += f'<td style="border: 1px solid #ddd; padding: 8px;">{cell}</td>'
+                html += '</tr>'
+
+        html += '</tbody></table>'
+        return html
+
+    text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
+
     # 转换标题
     text = re.sub(r'^### (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
     text = re.sub(r'^\*\*(\d+)\.\s*(.+)\*\*$', r'<h4>\1. \2</h4>', text, flags=re.MULTILINE)
@@ -118,7 +147,7 @@ exec_summary = md_to_html(exec_summary_md[:1200])
 
 # 提取论文列表（包含 arxiv 链接）
 papers = []
-for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+).*?\*\*arxiv\*\*:\s*\[([^\]]+)\]\(([^\)]+)\)', content, re.DOTALL):
+for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+).*?\*\*链接\*\*:\s*\[([^\]]+)\]\(([^\)]+)\)', content, re.DOTALL):
     num, title, date, arxiv_id, arxiv_url = match.groups()
     papers.append({
         'num': num,
