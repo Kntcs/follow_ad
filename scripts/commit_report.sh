@@ -64,8 +64,25 @@ import re
 def md_to_html(text):
     """将 Markdown 转换为 HTML"""
     import re
+    import html
 
-    # 1. 转换表格（在其他转换之前）
+    # 1. 转换代码块（在其他转换之前，使用占位符）
+    code_blocks = []
+    def save_code_block(match):
+        lang = match.group(1) if match.group(1) else ''
+        code = match.group(2).strip()
+        # HTML转义代码内容
+        escaped_code = html.escape(code)
+        code_html = f'<pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 16px 0; border-left: 3px solid #1a73e8;"><code style="font-family: monospace; font-size: 13px; color: #333;">{escaped_code}</code></pre>'
+        placeholder = f'___CODE_BLOCK_{len(code_blocks)}___'
+        code_blocks.append(code_html)
+        return placeholder
+    text = re.sub(r'```(\w+)?\n(.*?)```', save_code_block, text, flags=re.DOTALL)
+
+    # 2. 转换水平分隔线
+    text = re.sub(r'^---+$', '<hr style="border: none; border-top: 2px solid #e0e0e0; margin: 24px 0;">', text, flags=re.MULTILINE)
+
+    # 3. 转换表格
     table_pattern = r'\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)'
     def convert_table(match):
         header = match.group(1)
@@ -87,21 +104,22 @@ def md_to_html(text):
         return html
     text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
 
-    # 2. 转换标题（处理可能包含emoji和格式的标题）
+    # 4. 转换标题（从h4到h1，避免冲突）
+    text = re.sub(r'^####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
     text = re.sub(r'^###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
     text = re.sub(r'^##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
     text = re.sub(r'^#\s+(.+)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
 
-    # 3. 转换粗体（在标题之后，避免标题中的粗体被转换）
+    # 5. 转换粗体
     text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
 
-    # 4. 转换斜体
+    # 6. 转换斜体
     text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
 
-    # 5. 转换链接 [text](url)
+    # 7. 转换链接 [text](url)
     text = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2" style="color: #1a73e8; text-decoration: none;">\1</a>', text)
 
-    # 6. 处理列表和段落
+    # 8. 处理列表和段落
     lines = text.split('\n')
     result = []
     in_list = False
@@ -117,8 +135,8 @@ def md_to_html(text):
             result.append('<br>')
             continue
 
-        # 已转换的标题、表格等
-        if line_stripped.startswith('<h') or line_stripped.startswith('<table'):
+        # 已转换的HTML标签
+        if line_stripped.startswith('<'):
             if in_list:
                 result.append('</ul>')
                 in_list = False
@@ -128,7 +146,7 @@ def md_to_html(text):
             if not in_list:
                 result.append('<ul style="margin: 10px 0; padding-left: 28px;">')
                 in_list = True
-            item_content = line_stripped[2:]  # 去掉 "- "
+            item_content = line_stripped[2:]
             result.append(f'<li style="margin: 6px 0; line-height: 1.6;">{item_content}</li>')
         # 普通段落
         else:
@@ -140,7 +158,13 @@ def md_to_html(text):
     if in_list:
         result.append('</ul>')
 
-    return '\n'.join(result)
+    html_output = '\n'.join(result)
+
+    # 9. 恢复代码块
+    for i, code_html in enumerate(code_blocks):
+        html_output = html_output.replace(f'___CODE_BLOCK_{i}___', code_html)
+
+    return html_output
 
 with open("${REPORT_PATH}", 'r') as f:
     content = f.read()
@@ -190,6 +214,11 @@ html = f'''<!DOCTYPE html>
         .summary table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
         .summary th {{ border: 1px solid #ddd; padding: 10px; background: #f0f7ff; text-align: left; font-weight: 600; }}
         .summary td {{ border: 1px solid #ddd; padding: 10px; }}
+        .summary a {{ color: #1a73e8; text-decoration: none; }}
+        .summary a:hover {{ text-decoration: underline; }}
+        .summary pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 16px 0; border-left: 3px solid #1a73e8; }}
+        .summary code {{ font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 13px; color: #333; }}
+        .summary hr {{ border: none; border-top: 2px solid #e0e0e0; margin: 24px 0; }}
         .papers {{ margin: 20px 0; }}
         .paper {{ background: #fafafa; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 3px solid #4caf50; }}
         .paper-title {{ font-weight: 600; color: #1a73e8; font-size: 15px; }}
@@ -208,6 +237,10 @@ html = f'''<!DOCTYPE html>
             .summary p {{ color: #e0e0e0; }}
             .summary th {{ background: #1e3a5f; border-color: #444; }}
             .summary td {{ border-color: #444; }}
+            .summary a {{ color: #64b5f6; }}
+            .summary pre {{ background: #1e1e1e; border-color: #64b5f6; }}
+            .summary code {{ color: #e0e0e0; }}
+            .summary hr {{ border-color: #444; }}
         }}
     </style>
 </head>
