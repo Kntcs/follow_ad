@@ -61,18 +61,72 @@ if [[ $? -eq 0 ]]; then
     python3 << PYHTML > /tmp/email_body_${DATE}.html
 import re
 
+def md_to_html(text):
+    """将 Markdown 转换为 HTML"""
+    # 转换标题
+    text = re.sub(r'^### (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'^\*\*(\d+)\.\s*(.+)\*\*$', r'<h4>\1. \2</h4>', text, flags=re.MULTILINE)
+
+    # 转换粗体
+    text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
+
+    # 转换斜体
+    text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
+
+    # 转换列表项（- 开头）
+    text = re.sub(r'^- (.+)$', r'<li>\1</li>', text, flags=re.MULTILINE)
+
+    # 转换段落（连续的非空行）
+    lines = text.split('\n')
+    result = []
+    in_list = False
+
+    for i, line in enumerate(lines):
+        line = line.strip()
+
+        if line.startswith('<li>'):
+            if not in_list:
+                result.append('<ul>')
+                in_list = True
+            result.append(line)
+        else:
+            if in_list:
+                result.append('</ul>')
+                in_list = False
+
+            if line.startswith('<h'):
+                result.append(line)
+            elif line:
+                result.append(f'<p>{line}</p>')
+            elif result and not result[-1].startswith('<'):
+                result.append('<br>')
+
+    if in_list:
+        result.append('</ul>')
+
+    return '\n'.join(result)
+
 with open("${REPORT_PATH}", 'r') as f:
     content = f.read()
 
 # 提取 Executive Summary
 exec_match = re.search(r'## Executive Summary\n\n(.*?)\n## ', content, re.DOTALL)
-exec_summary = exec_match.group(1) if exec_match else "暂无摘要"
+exec_summary_md = exec_match.group(1) if exec_match else "暂无摘要"
 
-# 提取论文列表
+# 转换为 HTML
+exec_summary = md_to_html(exec_summary_md[:1200])
+
+# 提取论文列表（包含 arxiv 链接）
 papers = []
-for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+)', content, re.DOTALL):
-    num, title, date = match.groups()
-    papers.append((num, title.strip(), date.strip()))
+for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+).*?\*\*arxiv\*\*:\s*\[([^\]]+)\]\(([^\)]+)\)', content, re.DOTALL):
+    num, title, date, arxiv_id, arxiv_url = match.groups()
+    papers.append({
+        'num': num,
+        'title': title.strip(),
+        'date': date.strip(),
+        'arxiv_id': arxiv_id.strip(),
+        'arxiv_url': arxiv_url.strip()
+    })
 
 # 生成 HTML
 html = f'''<!DOCTYPE html>
@@ -87,10 +141,18 @@ html = f'''<!DOCTYPE html>
         .meta {{ background: #f0f7ff; padding: 16px; border-radius: 8px; margin: 16px 0; }}
         .meta-item {{ margin: 8px 0; font-size: 15px; }}
         .summary {{ background: #fff9e6; padding: 16px; border-left: 4px solid #ffc107; margin: 20px 0; border-radius: 4px; }}
+        .summary h3 {{ font-size: 16px; color: #d84315; margin: 16px 0 8px 0; }}
+        .summary h4 {{ font-size: 15px; color: #f57c00; margin: 12px 0 6px 0; }}
+        .summary p {{ margin: 8px 0; }}
+        .summary ul {{ margin: 8px 0; padding-left: 24px; }}
+        .summary li {{ margin: 4px 0; }}
+        .summary strong {{ color: #d84315; }}
         .papers {{ margin: 20px 0; }}
         .paper {{ background: #fafafa; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 3px solid #4caf50; }}
         .paper-title {{ font-weight: 600; color: #1a73e8; font-size: 15px; }}
         .paper-date {{ color: #666; font-size: 13px; margin-top: 4px; }}
+        .paper-date a {{ color: #1a73e8; text-decoration: none; font-weight: 500; }}
+        .paper-date a:hover {{ text-decoration: underline; }}
         .footer {{ margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; color: #666; font-size: 13px; }}
         @media (prefers-color-scheme: dark) {{
             body {{ background: #1a1a1a; color: #e0e0e0; }}
@@ -114,18 +176,18 @@ html = f'''<!DOCTYPE html>
 
         <div class="summary">
             <h2 style="margin-top:0; font-size:18px; color:#d84315;">⚡ 核心摘要</h2>
-            <div style="white-space: pre-wrap; font-size: 14px;">{exec_summary[:800]}</div>
+            <div style="font-size: 14px; line-height: 1.8;">{exec_summary}</div>
         </div>
 
         <div class="papers">
             <h2 style="font-size:18px; color:#2e7d32;">📑 本周论文</h2>
 '''
 
-for num, title, date in papers[:10]:  # 最多显示10篇
+for paper in papers[:10]:  # 最多显示10篇
     html += f'''
             <div class="paper">
-                <div class="paper-title">{num}. {title}</div>
-                <div class="paper-date">📅 {date}</div>
+                <div class="paper-title">{paper['num']}. {paper['title']}</div>
+                <div class="paper-date">📅 {paper['date']} • <a href="{paper['arxiv_url']}" style="color: #1a73e8; text-decoration: none;">📄 查看原文</a></div>
             </div>
 '''
 
