@@ -79,10 +79,20 @@ def md_to_html(text):
         return placeholder
     text = re.sub(r'```(\w+)?\n(.*?)```', save_code_block, text, flags=re.DOTALL)
 
-    # 2. 转换水平分隔线
+    # 2. 转换数学公式
+    # 块级公式 $$...$$ → 特殊样式的 div
+    def convert_block_math(match):
+        formula = match.group(1).strip()
+        return f'<div style="background: #f9f9f9; padding: 16px; margin: 16px 0; border-left: 4px solid #9c27b0; border-radius: 4px; overflow-x: auto;"><code style="font-family: \'Courier New\', monospace; font-size: 14px; color: #6a1b9a;">{formula}</code></div>'
+    text = re.sub(r'\$\$(.*?)\$\$', convert_block_math, text, flags=re.DOTALL)
+
+    # 行内公式 $...$ → code 标签
+    text = re.sub(r'\$([^\$]+)\$', r'<code style="background: #f3e5f5; padding: 2px 6px; border-radius: 3px; font-family: \'Courier New\', monospace; color: #6a1b9a;">\1</code>', text)
+
+    # 3. 转换水平分隔线
     text = re.sub(r'^---+$', '<hr style="border: none; border-top: 2px solid #e0e0e0; margin: 24px 0;">', text, flags=re.MULTILINE)
 
-    # 3. 转换表格
+    # 4. 转换表格
     table_pattern = r'\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)'
     def convert_table(match):
         header = match.group(1)
@@ -104,22 +114,22 @@ def md_to_html(text):
         return html
     text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
 
-    # 4. 转换标题（从h4到h1，避免冲突）
+    # 5. 转换标题（从h4到h1，避免冲突）
     text = re.sub(r'^####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
     text = re.sub(r'^###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
     text = re.sub(r'^##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
     text = re.sub(r'^#\s+(.+)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
 
-    # 5. 转换粗体
+    # 6. 转换粗体
     text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
 
-    # 6. 转换斜体
+    # 7. 转换斜体
     text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
 
-    # 7. 转换链接 [text](url)
+    # 8. 转换链接 [text](url)
     text = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2" style="color: #1a73e8; text-decoration: none;">\1</a>', text)
 
-    # 8. 处理列表和段落
+    # 9. 处理列表和段落
     lines = text.split('\n')
     result = []
     in_list = False
@@ -160,7 +170,7 @@ def md_to_html(text):
 
     html_output = '\n'.join(result)
 
-    # 9. 恢复代码块
+    # 10. 恢复代码块
     for i, code_html in enumerate(code_blocks):
         html_output = html_output.replace(f'___CODE_BLOCK_{i}___', code_html)
 
