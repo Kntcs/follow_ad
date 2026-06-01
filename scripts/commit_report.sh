@@ -40,6 +40,67 @@ if [[ $? -eq 0 ]]; then
     # 发送 macOS 通知
     osascript -e "display notification \"Report saved: research_reports/$(basename "$REPORT_PATH")\" with title \"Paper Scholar: ${FIELD}\" subtitle \"Weekly report completed\" sound name \"Glass\""
 
+    # 发送邮件通知（iOS 可收到）
+    EMAIL_RECIPIENT="1922585801@qq.com"
+
+    # 提取报告摘要
+    PAPER_COUNT=$(grep -c "^### [0-9]" "$REPORT_PATH" || echo "N/A")
+    EXEC_SUMMARY=$(sed -n '/## Executive Summary/,/^## /p' "$REPORT_PATH" | head -30 || echo "")
+
+    # 获取字段中文名
+    case "$FIELD" in
+        vla) FIELD_CN="VLA/端到端学习" ;;
+        llm) FIELD_CN="大语言模型" ;;
+        planning-control) FIELD_CN="规划与控制" ;;
+        gpu-graphics) FIELD_CN="GPU加速/图形学" ;;
+        mathematics) FIELD_CN="数学" ;;
+        formal-logic) FIELD_CN="形式逻辑" ;;
+        *) FIELD_CN="$FIELD" ;;
+    esac
+
+    # 创建邮件正文
+    EMAIL_BODY="📚 ${FIELD_CN}领域研究周报
+
+📅 报告日期：${DATE}
+📊 分析论文：${PAPER_COUNT} 篇
+📁 报告文件：$(basename "$REPORT_PATH")
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${EXEC_SUMMARY}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💾 完整报告已作为附件发送
+📂 本地路径：${REPORT_PATH}
+🔗 Git 提交：已自动提交到仓库
+
+🤖 此邮件由 Paper Scholar 自动生成"
+
+    # 使用 osascript 通过 Mail.app 发送邮件
+    osascript << APPLESCRIPT
+tell application "Mail"
+    set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", content:"${EMAIL_BODY}"}
+
+    tell theMessage
+        make new to recipient at end of to recipients with properties {address:"${EMAIL_RECIPIENT}"}
+
+        -- 添加附件
+        try
+            make new attachment with properties {file name:POSIX file "${REPORT_PATH}"} at after the last paragraph
+        end try
+    end tell
+
+    send theMessage
+end tell
+APPLESCRIPT
+
+    if [[ $? -eq 0 ]]; then
+        echo "[$(date)] ✓ Email sent to ${EMAIL_RECIPIENT}"
+    else
+        echo "[$(date)] ⚠ Email send failed (check Mail.app configuration)"
+    fi
+
     exit 0
 else
     echo "[$(date)] ✗ Git commit failed"
