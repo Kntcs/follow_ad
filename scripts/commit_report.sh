@@ -43,9 +43,8 @@ if [[ $? -eq 0 ]]; then
     # 发送邮件通知（iOS 可收到）
     EMAIL_RECIPIENT="1922585801@qq.com"
 
-    # 提取报告摘要
+    # 提取报告关键信息
     PAPER_COUNT=$(grep -c "^### [0-9]" "$REPORT_PATH" || echo "N/A")
-    EXEC_SUMMARY=$(sed -n '/## Executive Summary/,/^## /p' "$REPORT_PATH" | head -30 || echo "")
 
     # 获取字段中文名
     case "$FIELD" in
@@ -58,32 +57,103 @@ if [[ $? -eq 0 ]]; then
         *) FIELD_CN="$FIELD" ;;
     esac
 
-    # 创建邮件正文
-    EMAIL_BODY="📚 ${FIELD_CN}领域研究周报
+    # 生成 HTML 邮件正文
+    python3 << PYHTML > /tmp/email_body_${DATE}.html
+import re
 
-📅 报告日期：${DATE}
-📊 分析论文：${PAPER_COUNT} 篇
-📁 报告文件：$(basename "$REPORT_PATH")
+with open("${REPORT_PATH}", 'r') as f:
+    content = f.read()
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 提取 Executive Summary
+exec_match = re.search(r'## Executive Summary\n\n(.*?)\n## ', content, re.DOTALL)
+exec_summary = exec_match.group(1) if exec_match else "暂无摘要"
 
-${EXEC_SUMMARY}
+# 提取论文列表
+papers = []
+for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+)', content, re.DOTALL):
+    num, title, date = match.groups()
+    papers.append((num, title.strip(), date.strip()))
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 生成 HTML
+html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; color: #333; max-width: 100%; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        h1 {{ color: #1a73e8; margin-top: 0; font-size: 24px; }}
+        .meta {{ background: #f0f7ff; padding: 16px; border-radius: 8px; margin: 16px 0; }}
+        .meta-item {{ margin: 8px 0; font-size: 15px; }}
+        .summary {{ background: #fff9e6; padding: 16px; border-left: 4px solid #ffc107; margin: 20px 0; border-radius: 4px; }}
+        .papers {{ margin: 20px 0; }}
+        .paper {{ background: #fafafa; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 3px solid #4caf50; }}
+        .paper-title {{ font-weight: 600; color: #1a73e8; font-size: 15px; }}
+        .paper-date {{ color: #666; font-size: 13px; margin-top: 4px; }}
+        .footer {{ margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; color: #666; font-size: 13px; }}
+        @media (prefers-color-scheme: dark) {{
+            body {{ background: #1a1a1a; color: #e0e0e0; }}
+            .container {{ background: #2a2a2a; }}
+            .meta {{ background: #1e3a5f; }}
+            .summary {{ background: #3d3520; border-color: #ffc107; }}
+            .paper {{ background: #333; border-color: #66bb6a; }}
+            .paper-title {{ color: #64b5f6; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 ${FIELD_CN}领域研究周报</h1>
 
-💾 完整报告已作为附件发送
-📂 本地路径：${REPORT_PATH}
-🔗 Git 提交：已自动提交到仓库
+        <div class="meta">
+            <div class="meta-item">📅 <strong>报告日期</strong>: ${DATE}</div>
+            <div class="meta-item">📊 <strong>分析论文</strong>: {len(papers)} 篇</div>
+            <div class="meta-item">📁 <strong>完整报告</strong>: 见附件 .md 文件</div>
+        </div>
 
-🤖 此邮件由 Paper Scholar 自动生成"
+        <div class="summary">
+            <h2 style="margin-top:0; font-size:18px; color:#d84315;">⚡ 核心摘要</h2>
+            <div style="white-space: pre-wrap; font-size: 14px;">{exec_summary[:800]}</div>
+        </div>
 
-    # 使用 osascript 通过 Mail.app 发送邮件
+        <div class="papers">
+            <h2 style="font-size:18px; color:#2e7d32;">📑 本周论文</h2>
+'''
+
+for num, title, date in papers[:10]:  # 最多显示10篇
+    html += f'''
+            <div class="paper">
+                <div class="paper-title">{num}. {title}</div>
+                <div class="paper-date">📅 {date}</div>
+            </div>
+'''
+
+html += f'''
+        </div>
+
+        <div class="footer">
+            <div>💾 完整报告请查看邮件附件</div>
+            <div>📂 本地路径: ${REPORT_PATH}</div>
+            <div style="margin-top:12px; color:#999;">🤖 由 Paper Scholar 自动生成</div>
+        </div>
+    </div>
+</body>
+</html>'''
+
+print(html)
+PYHTML
+
+    # 使用 osascript 发送 HTML 邮件
     osascript << APPLESCRIPT
+set htmlContent to (do shell script "cat /tmp/email_body_${DATE}.html")
+
 tell application "Mail"
-    set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", content:"${EMAIL_BODY}"}
+    set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", visible:false}
 
     tell theMessage
         make new to recipient at end of to recipients with properties {address:"${EMAIL_RECIPIENT}"}
+        set html content to htmlContent
 
         -- 添加附件
         try
