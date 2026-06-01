@@ -63,73 +63,79 @@ import re
 
 def md_to_html(text):
     """将 Markdown 转换为 HTML"""
-    # 转换表格
-    table_pattern = r'\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)'
+    import re
 
+    # 1. 转换表格（在其他转换之前）
+    table_pattern = r'\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)'
     def convert_table(match):
         header = match.group(1)
         rows = match.group(2)
-
-        # 处理表头
         headers = [h.strip() for h in header.split('|') if h.strip()]
-        html = '<table style="width:100%; border-collapse: collapse; margin: 12px 0;">'
+        html = '<table style="width:100%; border-collapse: collapse; margin: 16px 0;">'
         html += '<thead><tr>'
         for h in headers:
-            html += f'<th style="border: 1px solid #ddd; padding: 8px; background: #f0f7ff; text-align: left;">{h}</th>'
+            html += f'<th style="border: 1px solid #ddd; padding: 10px; background: #f0f7ff; text-align: left; font-weight: 600;">{h}</th>'
         html += '</tr></thead><tbody>'
-
-        # 处理数据行
         for row in rows.strip().split('\n'):
             if row.strip():
                 cells = [c.strip() for c in row.split('|') if c.strip()]
                 html += '<tr>'
                 for cell in cells:
-                    html += f'<td style="border: 1px solid #ddd; padding: 8px;">{cell}</td>'
+                    html += f'<td style="border: 1px solid #ddd; padding: 10px;">{cell}</td>'
                 html += '</tr>'
-
         html += '</tbody></table>'
         return html
-
     text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
 
-    # 转换标题
-    text = re.sub(r'^### (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
-    text = re.sub(r'^## (.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
-    text = re.sub(r'^\*\*(\d+)\.\s*(.+)\*\*$', r'<h4>\1. \2</h4>', text, flags=re.MULTILINE)
+    # 2. 转换标题（处理可能包含emoji和格式的标题）
+    text = re.sub(r'^###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'^##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
+    text = re.sub(r'^#\s+(.+)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
 
-    # 转换粗体
+    # 3. 转换粗体（在标题之后，避免标题中的粗体被转换）
     text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
 
-    # 转换斜体
+    # 4. 转换斜体
     text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
 
-    # 转换列表项（- 开头）
-    text = re.sub(r'^- (.+)$', r'<li>\1</li>', text, flags=re.MULTILINE)
+    # 5. 转换链接 [text](url)
+    text = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2" style="color: #1a73e8; text-decoration: none;">\1</a>', text)
 
-    # 转换段落（连续的非空行）
+    # 6. 处理列表和段落
     lines = text.split('\n')
     result = []
     in_list = False
 
-    for i, line in enumerate(lines):
-        line = line.strip()
+    for line in lines:
+        line_stripped = line.strip()
 
-        if line.startswith('<li>'):
+        # 跳过空行
+        if not line_stripped:
+            if in_list:
+                result.append('</ul>')
+                in_list = False
+            result.append('<br>')
+            continue
+
+        # 已转换的标题、表格等
+        if line_stripped.startswith('<h') or line_stripped.startswith('<table'):
+            if in_list:
+                result.append('</ul>')
+                in_list = False
+            result.append(line_stripped)
+        # 列表项
+        elif line_stripped.startswith('- '):
             if not in_list:
-                result.append('<ul>')
+                result.append('<ul style="margin: 10px 0; padding-left: 28px;">')
                 in_list = True
-            result.append(line)
+            item_content = line_stripped[2:]  # 去掉 "- "
+            result.append(f'<li style="margin: 6px 0; line-height: 1.6;">{item_content}</li>')
+        # 普通段落
         else:
             if in_list:
                 result.append('</ul>')
                 in_list = False
-
-            if line.startswith('<h'):
-                result.append(line)
-            elif line:
-                result.append(f'<p>{line}</p>')
-            elif result and not result[-1].startswith('<'):
-                result.append('<br>')
+            result.append(f'<p style="margin: 10px 0; line-height: 1.8;">{line_stripped}</p>')
 
     if in_list:
         result.append('</ul>')
