@@ -94,6 +94,7 @@ def md_to_html(text):
 
     # 转换标题
     text = re.sub(r'^### (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'^## (.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
     text = re.sub(r'^\*\*(\d+)\.\s*(.+)\*\*$', r'<h4>\1. \2</h4>', text, flags=re.MULTILINE)
 
     # 转换粗体
@@ -138,12 +139,14 @@ def md_to_html(text):
 with open("${REPORT_PATH}", 'r') as f:
     content = f.read()
 
-# 提取 Executive Summary
-exec_match = re.search(r'## Executive Summary\n\n(.*?)\n## ', content, re.DOTALL)
-exec_summary_md = exec_match.group(1) if exec_match else "暂无摘要"
+# 转换整个报告为 HTML（不仅仅是摘要）
+# 移除第一行标题（因为邮件已有标题）
+content_without_title = re.sub(r'^# .+\n', '', content)
+# 移除元数据部分
+content_without_meta = re.sub(r'\*\*生成时间\*\*:.*?\n---\n', '', content_without_title, flags=re.DOTALL)
 
-# 转换为 HTML
-exec_summary = md_to_html(exec_summary_md[:1200])
+# 转换完整报告
+full_report_html = md_to_html(content_without_meta)
 
 # 提取论文列表（包含 arxiv 链接）
 papers = []
@@ -169,13 +172,18 @@ html = f'''<!DOCTYPE html>
         h1 {{ color: #1a73e8; margin-top: 0; font-size: 24px; }}
         .meta {{ background: #f0f7ff; padding: 16px; border-radius: 8px; margin: 16px 0; }}
         .meta-item {{ margin: 8px 0; font-size: 15px; }}
-        .summary {{ background: #fff9e6; padding: 16px; border-left: 4px solid #ffc107; margin: 20px 0; border-radius: 4px; }}
-        .summary h3 {{ font-size: 16px; color: #d84315; margin: 16px 0 8px 0; }}
-        .summary h4 {{ font-size: 15px; color: #f57c00; margin: 12px 0 6px 0; }}
-        .summary p {{ margin: 8px 0; }}
-        .summary ul {{ margin: 8px 0; padding-left: 24px; }}
-        .summary li {{ margin: 4px 0; }}
+        .summary {{ background: white; padding: 0; margin: 20px 0; }}
+        .summary h2 {{ font-size: 20px; color: #1a73e8; margin: 24px 0 12px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }}
+        .summary h3 {{ font-size: 18px; color: #d84315; margin: 20px 0 10px 0; }}
+        .summary h4 {{ font-size: 16px; color: #f57c00; margin: 16px 0 8px 0; }}
+        .summary p {{ margin: 10px 0; line-height: 1.8; font-size: 14px; }}
+        .summary ul {{ margin: 10px 0; padding-left: 28px; }}
+        .summary li {{ margin: 6px 0; line-height: 1.6; }}
         .summary strong {{ color: #d84315; }}
+        .summary em {{ color: #666; }}
+        .summary table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
+        .summary th {{ border: 1px solid #ddd; padding: 10px; background: #f0f7ff; text-align: left; font-weight: 600; }}
+        .summary td {{ border: 1px solid #ddd; padding: 10px; }}
         .papers {{ margin: 20px 0; }}
         .paper {{ background: #fafafa; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 3px solid #4caf50; }}
         .paper-title {{ font-weight: 600; color: #1a73e8; font-size: 15px; }}
@@ -187,9 +195,13 @@ html = f'''<!DOCTYPE html>
             body {{ background: #1a1a1a; color: #e0e0e0; }}
             .container {{ background: #2a2a2a; }}
             .meta {{ background: #1e3a5f; }}
-            .summary {{ background: #3d3520; border-color: #ffc107; }}
-            .paper {{ background: #333; border-color: #66bb6a; }}
-            .paper-title {{ color: #64b5f6; }}
+            .summary {{ background: #2a2a2a; }}
+            .summary h2 {{ color: #64b5f6; border-color: #444; }}
+            .summary h3 {{ color: #ff9800; }}
+            .summary h4 {{ color: #ffb74d; }}
+            .summary p {{ color: #e0e0e0; }}
+            .summary th {{ background: #1e3a5f; border-color: #444; }}
+            .summary td {{ border-color: #444; }}
         }}
     </style>
 </head>
@@ -204,27 +216,10 @@ html = f'''<!DOCTYPE html>
         </div>
 
         <div class="summary">
-            <h2 style="margin-top:0; font-size:18px; color:#d84315;">⚡ 核心摘要</h2>
-            <div style="font-size: 14px; line-height: 1.8;">{exec_summary}</div>
-        </div>
-
-        <div class="papers">
-            <h2 style="font-size:18px; color:#2e7d32;">📑 本周论文</h2>
-'''
-
-for paper in papers[:10]:  # 最多显示10篇
-    html += f'''
-            <div class="paper">
-                <div class="paper-title">{paper['num']}. {paper['title']}</div>
-                <div class="paper-date">📅 {paper['date']} • <a href="{paper['arxiv_url']}" style="color: #1a73e8; text-decoration: none;">📄 查看原文</a></div>
-            </div>
-'''
-
-html += f'''
+            {full_report_html}
         </div>
 
         <div class="footer">
-            <div>💾 完整报告请查看邮件附件</div>
             <div>📂 本地路径: ${REPORT_PATH}</div>
             <div style="margin-top:12px; color:#999;">🤖 由 Paper Scholar 自动生成</div>
         </div>
