@@ -58,8 +58,9 @@ if [[ $? -eq 0 ]]; then
     esac
 
     # 生成 HTML 邮件正文
-    python3 << PYHTML > /tmp/email_body_${DATE}.html
+    FIELD_PARAM="$FIELD" DATE_PARAM="$DATE" REPORT_PATH_PARAM="$REPORT_PATH" FIELD_CN_PARAM="$FIELD_CN" python3 << 'PYHTML' > /tmp/email_body_${DATE}.html
 import re
+import os
 
 def md_to_html(text):
     """将 Markdown 转换为 HTML"""
@@ -176,7 +177,13 @@ def md_to_html(text):
 
     return html_output
 
-with open("${REPORT_PATH}", 'r') as f:
+# 从环境变量读取参数
+FIELD = os.environ.get('FIELD_PARAM', '')
+DATE = os.environ.get('DATE_PARAM', '')
+REPORT_PATH = os.environ.get('REPORT_PATH_PARAM', '')
+FIELD_CN = os.environ.get('FIELD_CN_PARAM', '')
+
+with open(REPORT_PATH, 'r') as f:
     content = f.read()
 
 # 转换整个报告为 HTML（不仅仅是摘要）
@@ -256,10 +263,10 @@ html = f'''<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <h1>📚 ${FIELD_CN}领域研究周报</h1>
+        <h1>📚 {FIELD_CN}领域研究周报</h1>
 
         <div class="meta">
-            <div class="meta-item">📅 <strong>报告日期</strong>: ${DATE}</div>
+            <div class="meta-item">📅 <strong>报告日期</strong>: {DATE}</div>
             <div class="meta-item">📊 <strong>分析论文</strong>: {len(papers)} 篇</div>
             <div class="meta-item">📁 <strong>完整报告</strong>: 见附件 .md 文件</div>
         </div>
@@ -269,7 +276,7 @@ html = f'''<!DOCTYPE html>
         </div>
 
         <div class="footer">
-            <div>📂 本地路径: ${REPORT_PATH}</div>
+            <div>📂 本地路径: {REPORT_PATH}</div>
             <div style="margin-top:12px; color:#999;">🤖 由 Paper Scholar 自动生成</div>
         </div>
     </div>
