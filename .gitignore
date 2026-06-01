@@ -1,0 +1,10 @@
+# Temporary data directories
+.pending_analysis/
+research_data/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
