@@ -197,14 +197,14 @@ full_report_html = md_to_html(content_without_meta)
 
 # 提取论文列表（包含 arxiv 链接）
 papers = []
-for match in re.finditer(r'### (\d+)\.\s+(.+?)\n.*?\*\*发表\*\*:\s*([^\n]+).*?\*\*链接\*\*:\s*\[([^\]]+)\]\(([^\)]+)\)', content, re.DOTALL):
-    num, title, date, arxiv_id, arxiv_url = match.groups()
+# 匹配 ## 或 ### 格式的论文标题
+for match in re.finditer(r'^##\#?\s+(\d+)\.\s+\[([^\]]+)\]\s+(.+?)$', content, re.MULTILINE):
+    num, arxiv_id, title = match.groups()
     papers.append({
         'num': num,
         'title': title.strip(),
-        'date': date.strip(),
         'arxiv_id': arxiv_id.strip(),
-        'arxiv_url': arxiv_url.strip()
+        'arxiv_url': f'https://arxiv.org/abs/{arxiv_id.strip()}'
     })
 
 # 生成 HTML
