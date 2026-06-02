@@ -125,7 +125,9 @@ def md_to_html(text):
         return html
     text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
 
-    # 5. 转换标题（从h4到h1，避免冲突）
+    # 5. 转换标题（从h6到h1，避免冲突）
+    text = re.sub(r'^######\s+(.+)$', r'<h6 style="font-size:14px;color:#666;margin:12px 0 6px 0;">\1</h6>', text, flags=re.MULTILINE)
+    text = re.sub(r'^#####\s+(.+)$', r'<h5 style="font-size:15px;color:#757575;margin:14px 0 7px 0;">\1</h5>', text, flags=re.MULTILINE)
     text = re.sub(r'^####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
     text = re.sub(r'^###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
     text = re.sub(r'^##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
