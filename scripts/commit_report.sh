@@ -318,25 +318,28 @@ html = f'''<!DOCTYPE html>
 print(html)
 PYHTML
 
-    # 使用 osascript 发送 HTML 邮件
+    # 使用 osascript 发送 HTML 邮件（增加超时时间应对大文件）
     osascript << APPLESCRIPT
 set htmlContent to (do shell script "cat /tmp/email_body_${DATE}.html")
 
-tell application "Mail"
-    set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", visible:false}
+-- 增加超时时间到10分钟（大报告需要更多时间）
+with timeout of 600 seconds
+    tell application "Mail"
+        set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", visible:false}
 
-    tell theMessage
-        make new to recipient at end of to recipients with properties {address:"${EMAIL_RECIPIENT}"}
-        set html content to htmlContent
+        tell theMessage
+            make new to recipient at end of to recipients with properties {address:"${EMAIL_RECIPIENT}"}
+            set html content to htmlContent
 
-        -- 添加附件
-        try
-            make new attachment with properties {file name:POSIX file "${REPORT_PATH}"} at after the last paragraph
-        end try
+            -- 添加附件
+            try
+                make new attachment with properties {file name:POSIX file "${REPORT_PATH}"} at after the last paragraph
+            end try
+        end tell
+
+        send theMessage
     end tell
-
-    send theMessage
-end tell
+end timeout
 APPLESCRIPT
 
     if [[ $? -eq 0 ]]; then
