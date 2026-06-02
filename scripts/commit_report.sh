@@ -80,15 +80,25 @@ def md_to_html(text):
         return placeholder
     text = re.sub(r'```(\w+)?\n(.*?)```', save_code_block, text, flags=re.DOTALL)
 
-    # 2. 转换数学公式
-    # 块级公式 $$...$$ → 特殊样式的 div
-    def convert_block_math(match):
-        formula = match.group(1).strip()
-        return f'<div style="background: #f9f9f9; padding: 16px; margin: 16px 0; border-left: 4px solid #9c27b0; border-radius: 4px; overflow-x: auto;"><code style="font-family: \'Courier New\', monospace; font-size: 14px; color: #6a1b9a;">{formula}</code></div>'
-    text = re.sub(r'\$\$(.*?)\$\$', convert_block_math, text, flags=re.DOTALL)
+    # 2. 保护数学公式（不转换，留给 MathJax 渲染）
+    # 使用占位符保护公式，防止被后续的 markdown 转换影响
+    math_formulas = []
 
-    # 行内公式 $...$ → code 标签
-    text = re.sub(r'\$([^\$]+)\$', r'<code style="background: #f3e5f5; padding: 2px 6px; border-radius: 3px; font-family: \'Courier New\', monospace; color: #6a1b9a;">\1</code>', text)
+    # 保护块级公式 $$...$$
+    def save_block_math(match):
+        formula = match.group(0)  # 保留完整的 $$...$$
+        placeholder = f'___BLOCK_MATH_{len(math_formulas)}___'
+        math_formulas.append(formula)
+        return placeholder
+    text = re.sub(r'\$\$.*?\$\$', save_block_math, text, flags=re.DOTALL)
+
+    # 保护行内公式 $...$
+    def save_inline_math(match):
+        formula = match.group(0)  # 保留完整的 $...$
+        placeholder = f'___INLINE_MATH_{len(math_formulas)}___'
+        math_formulas.append(formula)
+        return placeholder
+    text = re.sub(r'\$[^\$]+\$', save_inline_math, text)
 
     # 3. 转换水平分隔线
     text = re.sub(r'^---+$', '<hr style="border: none; border-top: 2px solid #e0e0e0; margin: 24px 0;">', text, flags=re.MULTILINE)
@@ -175,6 +185,12 @@ def md_to_html(text):
     for i, code_html in enumerate(code_blocks):
         html_output = html_output.replace(f'___CODE_BLOCK_{i}___', code_html)
 
+    # 11. 恢复数学公式（让 MathJax 渲染）
+    for i, formula in enumerate(math_formulas):
+        # 分别处理块级和行内公式的占位符
+        html_output = html_output.replace(f'___BLOCK_MATH_{i}___', formula)
+        html_output = html_output.replace(f'___INLINE_MATH_{i}___', formula)
+
     return html_output
 
 # 从环境变量读取参数
@@ -213,6 +229,22 @@ html = f'''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- MathJax for LaTeX rendering -->
+    <script>
+    MathJax = {{
+        tex: {{
+            inlineMath: [['$', '$']],
+            displayMath: [['$$', '$$']],
+            processEscapes: true
+        }},
+        options: {{
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }}
+    }};
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; color: #333; max-width: 100%; margin: 0; padding: 20px; background: #f5f5f5; }}
         .container {{ background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
