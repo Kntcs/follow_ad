@@ -211,37 +211,29 @@ content_without_meta = re.sub(r'\*\*生成时间\*\*:.*?\n---\n', '', content_wi
 # 转换完整报告
 full_report_html = md_to_html(content_without_meta)
 
-# 提取论文列表（支持两种格式）
+# 提取论文列表（统一正则，只匹配2或3个#）
 papers = []
 
-# 格式1: ## N. [arxiv_id] Title (GPU/graphics 格式)
-for match in re.finditer(r'^##\#?\s+(\d+)\.\s+\[([^\]]+)\]\s+(.+?)$', content, re.MULTILINE):
+# 匹配: ## 或 ### 开头的论文标题
+# ##\#? 表示: ## 后面可选第3个#，只匹配2或3个#
+# 支持: ## 1. [2603.14523] Title 或 ### 1. Title
+# 只在 Trend Analysis 之前搜索
+trend_match = re.search(r'^## (Trend Analysis|趋势分析|Trend)', content, re.MULTILINE)
+search_content = content[:trend_match.start()] if trend_match else content
+
+for match in re.finditer(r'^##\#?\s+(\d+)\.\s+(?:\[([^\]]+)\]\s+)?(.+?)$', search_content, re.MULTILINE):
     num, arxiv_id, title = match.groups()
+    # 过滤非论文标题
+    title_clean = title.strip()
+    if any(kw in title_clean for kw in ['趋势', '方向', '路径', '建议', '推荐', '分析', '概述', 'Summary']):
+        continue
+
     papers.append({
         'num': num,
-        'title': title.strip(),
-        'arxiv_id': arxiv_id.strip(),
-        'arxiv_url': f'https://arxiv.org/abs/{arxiv_id.strip()}'
+        'title': title_clean,
+        'arxiv_id': arxiv_id.strip() if arxiv_id else 'N/A',
+        'arxiv_url': f'https://arxiv.org/abs/{arxiv_id.strip()}' if arxiv_id else '#'
     })
-
-# 格式2: ### N. Title (VLA 格式，不带arxiv ID)
-# 只提取 "## Trend Analysis" 或 "## 趋势分析" 之前的论文标题
-if not papers:  # 如果格式1没匹配到，尝试格式2
-    # 找到 Trend Analysis 的位置
-    trend_match = re.search(r'^## (Trend Analysis|趋势分析|Trend)', content, re.MULTILINE)
-    search_content = content[:trend_match.start()] if trend_match else content
-
-    for match in re.finditer(r'^###\s+(\d+)\.\s+([^#\n]+?)$', search_content, re.MULTILINE):
-        num, title = match.groups()
-        # 排除非论文标题（如 "1. 方法论趋势"）
-        title_clean = title.strip()
-        if not any(keyword in title_clean for keyword in ['趋势', '方向', '路径', '建议', '推荐', '分析']):
-            papers.append({
-                'num': num,
-                'title': title_clean,
-                'arxiv_id': 'N/A',
-                'arxiv_url': '#'
-            })
 
 # 生成 HTML
 html = f'''<!DOCTYPE html>
