@@ -57,10 +57,11 @@ if [[ $? -eq 0 ]]; then
         *) FIELD_CN="$FIELD" ;;
     esac
 
-    # 生成 HTML 邮件正文
-    FIELD_PARAM="$FIELD" DATE_PARAM="$DATE" REPORT_PATH_PARAM="$REPORT_PATH" FIELD_CN_PARAM="$FIELD_CN" python3 << 'PYHTML' > /tmp/email_body_${DATE}.html
+    # 生成 HTML 邮件正文并通过 SMTP 发送
+    FIELD_PARAM="$FIELD" DATE_PARAM="$DATE" REPORT_PATH_PARAM="$REPORT_PATH" FIELD_CN_PARAM="$FIELD_CN" python3 << 'PYHTML'
 import re
 import os
+import sys
 
 def md_to_html(text):
     """将 Markdown 转换为 HTML"""
@@ -329,40 +330,77 @@ html = f'''<!DOCTYPE html>
 </body>
 </html>'''
 
-print(html)
+# ============ 使用 SMTP 直接发送邮件 (修复83GB内存泄漏) ============
+import smtplib
+import sys
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+
+EMAIL_RECIPIENT = "1922585801@qq.com"
+smtp_server = "smtp.qq.com"
+smtp_port = 465  # SSL端口
+sender_email = "1922585801@qq.com"
+auth_code = os.environ.get('QQ_MAIL_AUTH_CODE', '')
+
+if not auth_code:
+    print("[ERROR] Missing QQ_MAIL_AUTH_CODE environment variable", file=sys.stderr)
+    print("Please set: export QQ_MAIL_AUTH_CODE='your_auth_code'", file=sys.stderr)
+    sys.exit(1)
+
+# 构建邮件
+msg = MIMEMultipart('mixed')
+msg['From'] = f'Paper Scholar <{sender_email}>'
+msg['To'] = EMAIL_RECIPIENT
+msg['Subject'] = f'📚 {FIELD_CN}周报 - {DATE}'
+
+# 添加HTML内容 (直接从内存发送,不写文件 - 避免AppleScript内存膨胀)
+html_part = MIMEText(html, 'html', 'utf-8')
+msg.attach(html_part)
+
+# 添加markdown附件
+try:
+    with open(REPORT_PATH, 'rb') as f:
+        attachment = MIMEBase('application', 'octet-stream')
+        attachment.set_payload(f.read())
+        encoders.encode_base64(attachment)
+        filename = os.path.basename(REPORT_PATH)
+        attachment.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+        msg.attach(attachment)
+except Exception as e:
+    print(f"[WARNING] Failed to attach report: {e}", file=sys.stderr)
+
+# 发送邮件
+try:
+    import ssl
+    # 创建SSL上下文 (禁用主机名检查以兼容macOS)
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    print(f"[INFO] Connecting to {smtp_server}:{smtp_port}...", file=sys.stderr)
+    with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=30) as server:
+        print("[INFO] Logging in...", file=sys.stderr)
+        server.login(sender_email, auth_code)
+        print("[INFO] Sending email...", file=sys.stderr)
+        server.send_message(msg)
+    print(f"[SUCCESS] Email sent to {EMAIL_RECIPIENT}", file=sys.stderr)
+    sys.exit(0)
+except smtplib.SMTPAuthenticationError:
+    print("[ERROR] SMTP authentication failed - check QQ_MAIL_AUTH_CODE", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"[ERROR] Email send failed: {e}", file=sys.stderr)
+    sys.exit(1)
 PYHTML
-
-    # 使用 osascript 发送 HTML 邮件（增加超时时间应对大文件）
-    osascript << APPLESCRIPT
-set htmlContent to (do shell script "cat /tmp/email_body_${DATE}.html")
-
--- 增加超时时间到10分钟（大报告需要更多时间）
-with timeout of 600 seconds
-    tell application "Mail"
-        set theMessage to make new outgoing message with properties {subject:"📚 ${FIELD_CN}周报 - ${DATE}", visible:false}
-
-        tell theMessage
-            make new to recipient at end of to recipients with properties {address:"${EMAIL_RECIPIENT}"}
-            set html content to htmlContent
-
-            -- 添加附件
-            try
-                make new attachment with properties {file name:POSIX file "${REPORT_PATH}"} at after the last paragraph
-            end try
-        end tell
-
-        send theMessage
-    end tell
-end timeout
-APPLESCRIPT
 
     if [[ $? -eq 0 ]]; then
         echo "[$(date)] ✓ Email sent to ${EMAIL_RECIPIENT}"
+        exit 0
     else
-        echo "[$(date)] ⚠ Email send failed (check Mail.app configuration)"
+        echo "[$(date)] ✗ Email send failed (check QQ_MAIL_AUTH_CODE)"
+        exit 1
     fi
-
-    exit 0
 else
     echo "[$(date)] ✗ Git commit failed"
     exit 1
