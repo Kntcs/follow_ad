@@ -41,6 +41,7 @@ case "${FIELD}" in
     temporal-logic) QUERY="temporal logic model checking" ;;
     planning-control) QUERY="motion planning trajectory control autonomous" ;;
     gpu-graphics) QUERY="GPU graphics rendering" ;;
+    embodied-ai) QUERY="embodied intelligence robot manipulation vision language action -survey -review" ;;
     *) QUERY="${FIELD}" ;;
 esac
 
@@ -48,9 +49,20 @@ esac
 python3 search_papers.py \
     --query "${QUERY}" \
     --sources arxiv,semantic-scholar,google-scholar \
-    --count 10 \
+    --count 20 \
     --min-year 2025 \
-    --output "${TEMP_DIR}/search_results.json" 2>&1 | tee "${TEMP_DIR}/search.log"
+    --output "${TEMP_DIR}/search_results_raw.json" 2>&1 | tee "${TEMP_DIR}/search.log"
+
+# 对于embodied-ai领域，过滤出研究型论文（排除综述）
+if [[ "${FIELD}" == "embodied-ai" ]]; then
+    echo "[$(date)] Filtering research papers (excluding surveys)..."
+    python3 /Users/alexyang/git_repo/follow_ad/scripts/filter_research_papers.py \
+        "${TEMP_DIR}/search_results_raw.json" \
+        "${TEMP_DIR}/search_results.json" \
+        10 2>&1 | tee "${TEMP_DIR}/filter.log"
+else
+    cp "${TEMP_DIR}/search_results_raw.json" "${TEMP_DIR}/search_results.json"
+fi
 
 # 解析搜索结果
 PAPER_COUNT=$(python3 -c "import json; d=json.load(open('${TEMP_DIR}/search_results.json')); print(len(d.get('papers', [])))")
@@ -230,8 +242,19 @@ cat ${TEMP_DIR}/paper_*_analysis.md > "${TEMP_DIR}/all_analyses.md" 2>/dev/null
 FIELD_TITLE=$(echo "${FIELD}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
 ANALYSIS_COUNT=$(ls ${TEMP_DIR}/paper_*_analysis.md 2>/dev/null | wc -l | tr -d ' ')
 
+# 根据领域设置报告类型
+if [[ "${FIELD}" == "embodied-ai" ]]; then
+    REPORT_TYPE="研究型论文"
+    REPORT_NOTE="注：本报告专注于研究型论文（已排除综述类论文），呈现最新的方法创新和实验突破。"
+else
+    REPORT_TYPE="研究"
+    REPORT_NOTE=""
+fi
+
 "$CLAUDE_BIN" -p --permission-mode bypassPermissions --model sonnet << EOF > "${REPORT_DIR}/weekly_${FIELD}_${DATE}.md"
 汇总生成${FIELD}领域周报。目标：帮助读者快速理解本周研究进展，同时保留足够深度。
+
+${REPORT_NOTE}
 
 **已完成的论文分析**：
 $(cat "${TEMP_DIR}/all_analyses.md" 2>/dev/null || echo "无分析内容")
@@ -240,9 +263,10 @@ $(cat "${TEMP_DIR}/all_analyses.md" 2>/dev/null || echo "无分析内容")
 
 **格式要求**：
 
-# ${FIELD_TITLE} 领域周报（${DATE}）
+# ${FIELD_TITLE} 领域${REPORT_TYPE}周报（${DATE}）
 
 **本期论文**: ${ANALYSIS_COUNT}篇
+**论文类型**: ${REPORT_TYPE}
 **数据来源**: arXiv + Semantic Scholar
 
 ---
