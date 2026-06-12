@@ -9,3 +9,12 @@ __pycache__/
 # macOS
 .DS_Store
 .claude/
+
+# 论文PDF目录 (文件太大)
+research_papers_*/
+
+# 临时工作目录
+.agents/
+
+# 整理计划文件
+.organize_plan.md
